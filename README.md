@@ -1,2 +1,2 @@
 # lpl-projects
-Collection of Sierra SQL commands
+Collection of Sierra SQL and API commands
