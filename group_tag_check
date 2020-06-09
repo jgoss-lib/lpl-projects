@@ -1,0 +1,11 @@
+SELECT
+
+    id2reckey(vf.record_id)
+
+FROM sierra_view.varfield_view vf
+
+WHERE vf.record_type_code = 't'
+
+    AND vf.marc_tag = '245'
+
+    AND vf.varfield_type_code != 'b'
