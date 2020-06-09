@@ -1,0 +1,77 @@
+-- COPIED from rayvoelker github
+
+DROP TABLE IF EXISTS temp_stat_groups;
+CREATE TEMP TABLE temp_stat_groups AS
+SELECT
+s.code AS stat_group_code_num,
+s.location_code AS location_code,
+s.name as name
+
+FROM
+sierra_view.statistic_group_myuser as s
+;
+
+
+
+select
+date_trunc('day', c.transaction_gmt)::date as checkin_day,
+c.stat_group_code_num,
+(
+	select
+-- 	location_code
+	l.name
+
+	from
+	temp_stat_groups as t
+
+	join
+	sierra_view.location_myuser as l
+	on
+	  l.code = t.location_code
+
+	where
+	t.stat_group_code_num = c.stat_group_code_num
+) as stat_group_location,
+p.ptype_code,
+(
+	select
+	n.description
+
+	from
+	sierra_view.ptype_property as prop
+
+	join
+	sierra_view.ptype_property_name as n
+	on
+	n.ptype_id = prop.id
+	where
+	prop.value = p.ptype_code
+	limit 1
+) as ptype_name,
+count(*) as count_checkins,
+count(distinct c.patron_record_id) as count_distinct_patrons
+-- c.*
+
+from
+sierra_view.circ_trans as c
+
+join
+sierra_view.patron_record as p
+on
+  p.record_id = c.patron_record_id
+
+where
+c.op_code = 'i'
+-- look at only previous day
+and date_trunc('day', c.transaction_gmt)::date = (date('now') - '1 day'::interval)::date
+
+group by
+checkin_day,
+c.stat_group_code_num,
+p.ptype_code
+
+order by
+checkin_day,
+stat_group_location,
+p.ptype_code
+;
