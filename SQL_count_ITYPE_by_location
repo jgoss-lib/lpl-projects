@@ -1,0 +1,54 @@
+-- COPIED from rayvoelker
+-- group location codes and item types, and then count item types in each location code.
+
+select 
+i.location_code,
+ln.name,
+n.name,
+count(*) as count
+
+FROM
+sierra_view.record_metadata	as r
+
+JOIN
+sierra_view.item_record		as i
+ON
+  i.record_id = r.id
+
+JOIN
+sierra_view.location	as l
+ON
+ l.code = i.location_code
+
+JOIN
+sierra_view.location_name	as ln
+ON
+ ln.location_id = l.id
+
+JOIN
+sierra_view.itype_property	as p
+on
+  p.code_num = i.itype_code_num
+
+JOIN
+sierra_view.itype_property_name	as n
+on
+  n.itype_property_id = p.id
+
+
+WHERE
+r.deletion_date_gmt is null
+AND r.campus_code = ''
+AND r.record_type_code = 'i'
+
+AND i.is_suppressed is false
+
+GROUP BY
+i.location_code,
+ln.name,
+n.name
+
+ORDER BY
+i.location_code,
+count desc,
+n.name
