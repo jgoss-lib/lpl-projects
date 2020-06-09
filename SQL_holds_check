@@ -1,0 +1,196 @@
+--SQL COPIED FROM rayvoelker @plch --> credit due!
+-- clean up export CSV to include only Hold placed; patron record #; pickup location code; 
+-- patron home library code; hold expire; expiration date; bib record #
+
+-- STEP 1
+-- gather a list of holds we would consider as active / actionable:
+--   * hold is bib-level or volume-level
+--   * hold is NOT frozen
+--   * hold is NOT INN-Reach
+--   * hold is NOT ILL
+--   * hold is placed by a patron having the following ptype_code:
+--     (0, 1, 2, 3, 5, 6, 10, 11, 12, 15, 22, 30, 31, 32, 40, 41, 196)
+
+DROP TABLE IF EXISTS temp_plch_holds;
+CREATE TEMP TABLE temp_plch_holds AS
+SELECT
+h.*,
+p.ptype_code as patron_ptype_code,
+p.home_library_code AS patron_home_library_code,
+p.expiration_date_gmt AS patron_expiration_date_gmt,
+p.block_until_date_gmt AS patron_block_until_date_gmt,
+p.owed_amt AS patron_owed_amt,
+p.activity_gmt AS patron_activity_gmt,
+r.record_type_code,
+r.record_num,
+CASE
+-- 	we are not going to look at item level holds as part of this report, but could be useful later on...
+-- 	WHEN r.record_type_code = 'i' THEN (
+-- 		SELECT
+-- 		l.bib_record_id
+--
+-- 		FROM
+-- 		sierra_view.bib_record_item_record_link as l
+--
+-- 		WHERE
+-- 		l.item_record_id = h.record_id
+--
+-- 		LIMIT 1
+-- 	)
+
+	WHEN r.record_type_code = 'j' THEN (
+		SELECT
+		l.bib_record_id
+
+		FROM
+		sierra_view.bib_record_volume_record_link as l
+
+		WHERE
+		l.volume_record_id = h.record_id
+
+		LIMIT 1
+	)
+
+	WHEN r.record_type_code = 'b' THEN (
+		h.record_id
+	)
+
+	ELSE NULL
+
+END AS bib_record_id
+
+FROM
+sierra_view.hold as h
+
+LEFT OUTER JOIN
+sierra_view.record_metadata as r
+ON
+  r.id = h.record_id
+
+LEFT OUTER JOIN
+sierra_view.patron_record as p
+ON
+  p.record_id = h.patron_record_id
+
+
+WHERE
+(r.record_type_code = 'b' OR r.record_type_code = 'j')
+AND h.is_ir is false -- not INN-Reach
+AND h.is_ill is false -- not ILL
+AND h.is_frozen is false -- not frozen hold -- considering frozen holds for this
+AND p.ptype_code IN (0, 1, 2, 3, 5, 6, 10, 11, 12, 15, 22, 30, 31, 32, 40, 41, 196)
+;
+--
+
+
+
+-- STEP 2
+-- Gather the list of items derived from the holds (by the title, or bib record
+-- number) that could possibly go to fill the holds from the previous list.
+-- Active items would be:
+-- * item has a status of '-'
+-- * item is not checked out
+-- * item is not suppressed
+-- * item is available at library
+
+DROP TABLE IF EXISTS temp_plch_items;
+CREATE TEMP TABLE temp_plch_items AS
+
+-- seperate out all the bib record numbers
+WITH temp_plch_holds_bibs AS (
+	select
+	distinct(bib_record_id) as bib_record_id
+	from
+	temp_plch_holds
+)
+
+SELECT
+t.bib_record_id,
+i.record_id as item_record_id,
+i.itype_code_num,
+i.location_code,
+i.agency_code_num,
+i.copy_num,
+(
+	SELECT
+	p.index_entry
+	from
+	sierra_view.phrase_entry as p
+	where
+	p.record_id = i.record_id
+	and p.index_tag = 'b'
+	order by occurrence
+	limit 1
+) as item_barcode
+
+FROM
+temp_plch_holds_bibs as t
+
+JOIN
+sierra_view.bib_record_item_record_link as l
+ON
+  l.bib_record_id = t.bib_record_id
+
+JOIN
+sierra_view.item_record as i
+ON
+  i.record_id = l.item_record_id
+
+LEFT OUTER JOIN
+sierra_view.checkout as c
+ON
+  c.item_record_id = l.item_record_id
+
+WHERE
+i.item_status_code IN ('-')
+AND c.due_gmt IS NULL
+AND i.is_suppressed IS FALSE
+AND i.is_available_at_library is TRUE
+;
+
+
+
+-- STEP 3
+-- PROFIT!
+-- produce some sort of franken-paging list
+
+
+DROP INDEX IF EXISTS idx_temp_temp_plch_items_bib_record_id;
+
+CREATE INDEX idx_temp_temp_plch_items_bib_record_id ON temp_plch_items(bib_record_id);
+
+select
+t.id as hold_id,
+t.placed_gmt,
+t.patron_record_id,
+(
+	select
+	r.record_type_code || r.record_num || 'a'
+	from
+	sierra_view.record_metadata as r
+	where
+	r.id = t.patron_record_id
+	and r.campus_code = ''
+	limit 1
+) as patron_record_num,
+t.bib_record_id,
+t.pickup_location_code,
+t.patron_home_library_code,
+(
+	select
+	string_agg(ti.location_code, ', ')
+	from
+	temp_plch_items as ti
+	where
+	ti.bib_record_id = t.bib_record_id
+
+) as items_available_at_locations,
+
+*
+from
+temp_plch_holds as t
+
+ORDER BY
+t.placed_gmt
+limit 10000
+;
