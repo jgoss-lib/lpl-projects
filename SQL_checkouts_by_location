@@ -1,0 +1,57 @@
+-- COPIED from rayvoelker
+
+DROP TABLE IF EXISTS temp_map_locations
+;
+
+
+CREATE TEMP TABLE temp_map_locations AS
+SELECT
+l.code as code,
+n.name as name
+
+FROM
+sierra_view.location as l
+
+JOIN
+sierra_view.location_name as n
+ON
+  n.location_id = l.id
+;
+
+
+DROP TABLE IF EXISTS temp_map_locations_counts
+;
+
+
+CREATE TEMP TABLE temp_map_locations_counts AS
+SELECT
+c.item_location_code as code,
+count(c.item_location_code) as count
+
+FROM
+sierra_view.circ_trans as c
+
+WHERE
+extract(week from c.transaction_gmt) = extract(week from (NOW() - '1 week'::INTERVAL))
+
+GROUP BY
+c.item_location_code
+;
+
+
+SELECT
+t.code,
+t.name,
+COALESCE(c.count, 0) as count
+
+FROM
+temp_map_locations as t
+
+LEFT OUTER JOIN
+temp_map_locations_counts as c
+ON
+  c.code = t.code
+
+ORDER BY
+t.code
+;
