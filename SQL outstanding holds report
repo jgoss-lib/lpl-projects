@@ -8,7 +8,7 @@ SELECT
 h.placed_gmt::DATE AS "Date Placed",
 h.expires_gmt::DATE AS "Not Needed After",
 n.last_name||', '||n.first_name||' '||n.middle_name AS "Patron Name",
-REPLACE(i.call_number,'|a','') AS "CALL NO.",
+REPLACE(i.barcode,'|a','') AS "Barcode",
 ir.location_code AS "Location",
 CASE
 	WHEN h.status = 't' THEN 'IN TRANSIT'
