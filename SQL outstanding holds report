@@ -31,6 +31,6 @@ sierra_view.item_record ir
 ON
 h.record_id = ir.id
 WHERE
-h.pickup_location_code = 'neez'
+h.pickup_location_code = 'cc'
 --AND h.status IN ('b','i')
 ORDER BY 6,1
